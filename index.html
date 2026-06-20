@@ -189,6 +189,14 @@
   .sr-fav{color:var(--kuchiba)}.sr-made{color:var(--matcha)}
   .search-empty{text-align:center;color:var(--sumi);padding:36px 0;font-size:.92rem}
   .search-hint{font-size:.82rem;color:var(--sumi)}
+  .sr-note{color:var(--kuchiba)}
+  /* メモ欄 */
+  .recipe-note-wrap{padding:14px 0 18px;border-bottom:1px solid var(--line);margin-bottom:6px}
+  .rn-label{font-size:.82rem;font-weight:700;color:var(--matcha);letter-spacing:.04em;margin-bottom:8px}
+  .recipe-note{width:100%;font-family:'Zen Maru Gothic',sans-serif;font-size:.9rem;color:var(--ink);background:var(--tip-bg);border:1px solid var(--tip-line);border-radius:12px;padding:11px 14px;resize:vertical;line-height:1.7;min-height:56px}
+  .recipe-note:focus{outline:none;border-color:var(--kuchiba);box-shadow:0 0 0 3px rgba(184,138,62,.15)}
+  .rn-hint{font-size:.72rem;color:var(--sumi);margin-top:6px;opacity:.8}
+  .day.is-note .bdg-note{display:inline-block;background:var(--tip-line);color:var(--ink)}
 </style>
 </head>
 <body>
@@ -274,6 +282,7 @@
       <button class="filt active" data-f="all">すべて</button>
       <button class="filt" data-f="fav">★ お気に入り</button>
       <button class="filt" data-f="made">✓ 作った</button>
+      <button class="filt" data-f="note">📝 メモあり</button>
     </div>
     <div class="search-count" id="searchCount"></div>
     <div class="search-results" id="searchResults"></div>
@@ -313,6 +322,19 @@ const MADE_KEY="dinner_2026_made",FAV_KEY="dinner_2026_fav";
 function getMap(k){try{return JSON.parse(localStorage.getItem(k))||{}}catch(e){return {};}}
 function setFlag(k,id,on){const m=getMap(k);if(on)m[id]=1;else delete m[id];try{localStorage.setItem(k,JSON.stringify(m));}catch(e){}}
 function rid(month,day){return month+"-"+day;}
+// メモの保存
+const NOTE_KEY="dinner_2026_notes";
+function getNote(id){return getMap(NOTE_KEY)[id]||"";}
+function setNote(id,text){const m=getMap(NOTE_KEY);if(text&&text.trim())m[id]=text;else delete m[id];try{localStorage.setItem(NOTE_KEY,JSON.stringify(m));}catch(e){}}
+function esc(s){return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");}
+function noteSection(month,day){
+  const id=rid(month,day);
+  return `<div class="recipe-note-wrap">
+    <div class="rn-label">📝 メモ（味の感想・代用したものなど）</div>
+    <textarea class="recipe-note" data-id="${id}" rows="2" placeholder="例：醤油を大さじ1に減らして薄味に。ぶり→さわらで代用しても◎">${esc(getNote(id))}</textarea>
+    <div class="rn-hint">入力すると自動で保存されます（この端末内）</div>
+  </div>`;
+}
 function actionBar(month,day){
   const id=rid(month,day);
   const made=getMap(MADE_KEY)[id]?1:0, fav=getMap(FAV_KEY)[id]?1:0;
@@ -377,14 +399,14 @@ function renderMonth(){
   $("kondateTitle").textContent=`${curMonth}の夕食献立`;
   $("shunChips").innerHTML=shun.map(s=>`<span class="chip">${s}</span>`).join("");
   // 献立カレンダー
-  const madeMap=getMap(MADE_KEY),favMap=getMap(FAV_KEY);
+  const madeMap=getMap(MADE_KEY),favMap=getMap(FAV_KEY),noteMap=getMap(NOTE_KEY);
   $("calendar").innerHTML=recipes.map((r,i)=>{
     const tg=tagInfo(r.type);
     const dish=(cls,role,o)=>`<div class="dish ${cls}"><div class="role">${role}</div><div class="name">${o.title}${o.sub?`<small>${o.sub}</small>`:""}</div></div>`;
     const isToday=curMonth===todayMonthLabel&&r.d===todayDay;
-    const id=rid(curMonth,r.d);const made=madeMap[id]?' is-made':'';const fav=favMap[id]?' is-fav':'';
-    return `<article class="day${isToday?' today':''}${made}${fav}" tabindex="0" role="button" data-idx="${i}" data-id="${id}" aria-label="${r.d}日の献立を開く${isToday?'（今日）':''}">
-      <div class="day-top"><div class="day-date"><span class="d">${r.d}</span><span class="w ${wkClass(r.w)}">${r.w}</span>${isToday?'<span class="today-chip">今日</span>':''}<span class="bdg bdg-fav">★</span><span class="bdg bdg-made">✓作った</span></div><span class="day-tag ${tg.cls}">${tg.txt}</span></div>
+    const id=rid(curMonth,r.d);const made=madeMap[id]?' is-made':'';const fav=favMap[id]?' is-fav':'';const note=(noteMap[id]&&noteMap[id].trim())?' is-note':'';
+    return `<article class="day${isToday?' today':''}${made}${fav}${note}" tabindex="0" role="button" data-idx="${i}" data-id="${id}" aria-label="${r.d}日の献立を開く${isToday?'（今日）':''}">
+      <div class="day-top"><div class="day-date"><span class="d">${r.d}</span><span class="w ${wkClass(r.w)}">${r.w}</span>${isToday?'<span class="today-chip">今日</span>':''}<span class="bdg bdg-fav">★</span><span class="bdg bdg-made">✓作った</span><span class="bdg bdg-note">📝</span></div><span class="day-tag ${tg.cls}">${tg.txt}</span></div>
       <div class="dishes">${dish("main","主菜",r.main)}${dish("side","副菜",r.side)}${dish("soup","汁物",r.soup)}</div>
       <div class="tap-hint">タップで作り方 →</div>
     </article>`;
@@ -426,7 +448,7 @@ function openModal(idx){
       </div>
       ${o.tip?`<div class="tip"><b>💡 コツ</b>：${o.tip}</div>`:""}
     </div>`;
-  modalBody.innerHTML=actionBar(curMonth,r.d)+block("r-main","主菜",r.main)+block("r-side","副菜",r.side)+block("r-soup","汁物",r.soup);
+  modalBody.innerHTML=actionBar(curMonth,r.d)+noteSection(curMonth,r.d)+block("r-main","主菜",r.main)+block("r-side","副菜",r.side)+block("r-soup","汁物",r.soup);
   modalBg.classList.add("open");document.body.style.overflow="hidden";
 }
 function openStock(idx){
@@ -465,13 +487,20 @@ modalBody.addEventListener("click",e=>{
   refreshBadges();
   if($("searchView").classList.contains("active"))renderSearch();
 });
+// メモ欄（モーダル内・自動保存）
+modalBody.addEventListener("input",e=>{
+  const t=e.target.closest(".recipe-note");if(!t)return;
+  setNote(t.dataset.id,t.value);
+  refreshBadges();
+});
 // 月カードのバッジを再描画（再生成せず状態のみ更新）
 function refreshBadges(){
-  const made=getMap(MADE_KEY),fav=getMap(FAV_KEY);
+  const made=getMap(MADE_KEY),fav=getMap(FAV_KEY),notes=getMap(NOTE_KEY);
   $("calendar").querySelectorAll(".day").forEach(card=>{
     const id=card.dataset.id;
     card.classList.toggle("is-made",!!made[id]);
     card.classList.toggle("is-fav",!!fav[id]);
+    card.classList.toggle("is-note",!!(notes[id]&&notes[id].trim()));
   });
 }
 
@@ -529,10 +558,10 @@ function openArchiveModal(mk,d){
         </div>
         ${o.tip?`<div class="tip"><b>💡 コツ</b>：${o.tip}</div>`:""}
       </div>`;
-    modalBody.innerHTML=actionBar(mk,d)+block("r-main","主菜",r.main)+block("r-side","副菜",r.side)+block("r-soup","汁物",r.soup);
+    modalBody.innerHTML=actionBar(mk,d)+noteSection(mk,d)+block("r-main","主菜",r.main)+block("r-side","副菜",r.side)+block("r-soup","汁物",r.soup);
   } else {
     modalDate.textContent=`${mk}${d}日`;
-    modalBody.innerHTML=actionBar(mk,d)+`<div class="recipe-block r-main" style="border-bottom:none"><div class="rb-head"><h3 style="font-size:1.3rem">${menuItem?menuItem.emoji+" "+menuItem.name:"この日の献立"}</h3></div><p style="padding:16px 0;color:var(--sumi)">この月のレシピ詳細は準備中です。</p></div>`;
+    modalBody.innerHTML=actionBar(mk,d)+noteSection(mk,d)+`<div class="recipe-block r-main" style="border-bottom:none"><div class="rb-head"><h3 style="font-size:1.3rem">${menuItem?menuItem.emoji+" "+menuItem.name:"この日の献立"}</h3></div><p style="padding:16px 0;color:var(--sumi)">この月のレシピ詳細は準備中です。</p></div>`;
   }
   modalBg.classList.add("open");document.body.style.overflow="hidden";
 }
@@ -567,14 +596,17 @@ Object.keys(archive).forEach(month=>{
 let searchFilter="all";
 function renderSearch(){
   const q=$("searchInput").value.trim().toLowerCase();
-  const made=getMap(MADE_KEY),fav=getMap(FAV_KEY);
+  const made=getMap(MADE_KEY),fav=getMap(FAV_KEY),notes=getMap(NOTE_KEY);
+  const hasNote=id=>notes[id]&&notes[id].trim();
   let items=RECIPE_INDEX;
   if(searchFilter==="fav")items=items.filter(it=>fav[rid(it.month,it.day)]);
   else if(searchFilter==="made")items=items.filter(it=>made[rid(it.month,it.day)]);
-  if(q)items=items.filter(it=>it.text.toLowerCase().includes(q));
+  else if(searchFilter==="note")items=items.filter(it=>hasNote(rid(it.month,it.day)));
+  if(q)items=items.filter(it=>it.text.toLowerCase().includes(q)||(notes[rid(it.month,it.day)]||"").toLowerCase().includes(q));
   const cnt=$("searchCount");
   if(!items.length){
-    $("searchResults").innerHTML=`<div class="search-empty">${searchFilter==="fav"?"お気に入りはまだありません。レシピを開いて「☆ お気に入り」をタップしてください。":searchFilter==="made"?"「作った」記録はまだありません。レシピを開いて記録できます。":"該当するレシピが見つかりませんでした。"}</div>`;
+    const msg=searchFilter==="fav"?"お気に入りはまだありません。レシピを開いて「☆ お気に入り」をタップしてください。":searchFilter==="made"?"「作った」記録はまだありません。レシピを開いて記録できます。":searchFilter==="note"?"メモはまだありません。レシピを開いてメモを書けます。":"該当するレシピが見つかりませんでした。";
+    $("searchResults").innerHTML=`<div class="search-empty">${msg}</div>`;
     cnt.textContent="";return;
   }
   cnt.innerHTML=`<span class="search-hint">${items.length}件のレシピ</span>`;
@@ -582,8 +614,9 @@ function renderSearch(){
     const id=rid(it.month,it.day);
     return `<button class="sresult" data-month="${it.month}" data-day="${it.day}">
       <div class="sr-date">${it.month}${it.day}日</div>
-      <div class="sr-dish">${it.main}${fav[id]?' <span class="sr-fav">★</span>':''}${made[id]?' <span class="sr-made">✓</span>':''}</div>
+      <div class="sr-dish">${it.main}${fav[id]?' <span class="sr-fav">★</span>':''}${made[id]?' <span class="sr-made">✓</span>':''}${hasNote(id)?' <span class="sr-note">📝</span>':''}</div>
       <div class="sr-sub">${it.dishes}</div>
+      ${hasNote(id)?`<div class="sr-sub sr-note">📝 ${esc(notes[id])}</div>`:""}
     </button>`;
   }).join("");
 }
