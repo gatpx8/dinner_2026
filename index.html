@@ -431,10 +431,95 @@ $("monthSel").addEventListener("click",e=>{const b=e.target.closest(".msel-btn")
   document.querySelectorAll(".msel-btn").forEach(x=>x.classList.remove("active"));
   b.classList.add("active");curMonth=b.dataset.m;renderMonth();});
 
+// ===== 買い物リストをレシピの材料から自動生成（日曜始まりの週ごとに集計）=====
+// 手書きの固定データ(shoppingByMonth)はレシピと不一致で漏れ(例:すだち)が出ていたため、
+// レシピの材料を毎回集計する方式へ変更。常備の調味料等は除外し、同名食材は分量を合算する。
+const SHOP_EXCLUDE=new Set(["塩","こしょう","黒こしょう","粗びき黒こしょう","白こしょう","胡椒","塩こしょう","塩・こしょう","粗塩","岩塩","醤油","しょうゆ","薄口醤油","濃口醤油","うすくち醤油","みりん","本みりん","砂糖","きび砂糖","三温糖","上白糖","酒","料理酒","日本酒","白ワイン","酢","米酢","穀物酢","すし酢","黒酢","みそ","味噌","合わせみそ","赤みそ","白みそ","だし","だし汁","出汁","和風だし","顆粒だし","ほんだし","かつおだし","昆布だし","コンソメ","顆粒コンソメ","コンソメキューブ","鶏がらスープの素","鶏ガラスープの素","鶏がらスープ","鶏ガラスープ","鶏がらだし","鶏ガラだし","ガラスープ","中華だし","創味シャンタン","油","サラダ油","ごま油","太白ごま油","オリーブオイル","オリーブ油","米油","ラー油","片栗粉","水溶き片栗粉","小麦粉","薄力粉","強力粉","米粉","パン粉","天ぷら粉","水","湯","お湯","熱湯","氷水","マヨネーズ","マヨ","ケチャップ","ソース","中濃ソース","ウスターソース","とんかつソース","オイスターソース","めんつゆ","白だし","ポン酢","ぽん酢","豆板醤","甜麺醤","テンメンジャン","コチュジャン","はちみつ","蜂蜜","メープルシロップ","塩麹","しょうゆ麹","かつお節","削り節","青のり","焼きのり","のり","刻みのり","味付けのり","白ごま","黒ごま","すりごま","いりごま","炒りごま","ごま","金ごま","七味","七味唐辛子","一味","一味唐辛子","唐辛子","鷹の爪","粉山椒","山椒","わさび","からし","練りからし","粒マスタード","マスタード","バター","有塩バター","無塩バター","粉チーズ","カレー粉","カレールウ","ルウ","ローリエ","ナツメグ","ドレッシング","ナンプラー","オイスター","ゆず胡椒","柚子胡椒","重曹","ベーキングパウダー","ゼラチン","粉ゼラチン","スープの素","味の素","うま味調味料","顆粒和風だし","顆粒鶏がらスープ","焼肉のたれ","焼き肉のたれ","付属のたれ","たれ","かえし","ごまだれ","天つゆ","おろしにんにく","おろししょうが","バジル","オレガノ","乾燥パセリ","クミン","チリパウダー","薬味","お好みで","好みで","ごはん","ご飯","温かいごはん","温かいご飯","白ごはん","白ご飯","ライス","青じそドレッシング","冷水","揚げ油","サラダ油(揚げ用)","だしの素","だしパック","顆粒だしの素","お好みソース","お好み焼きソース","中濃ソース","西京みそ","西京味噌","サフラン","ターメリック","たで酢","割り下","めんつゆ(2倍濃縮)","めんつゆ(3倍濃縮)","冷や水","氷","バニラエッセンス","ナツメグパウダー"]);
+const MEAT_KW=["鶏","豚","牛","ひき肉","挽き肉","合いびき","合い挽き","ハム","ベーコン","ソーセージ","ウインナー","ささみ","手羽","レバー","ラム","鴨","スパム","焼豚","チャーシュー","ミンチ"];
+const FISH_KW=["魚","鮭","さけ","サーモン","鯖","さば","ぶり","ブリ","はまち","あじ","鯵","アジ","いわし","鰯","さんま","秋刀魚","鰆","さわら","たら","鱈","かれい","カレイ","ひらめ","ほっけ","きす","キス","いさき","イサキ","かます","金目","きんめ","鯛","たい","すずき","スズキ","かつお","鰹","まぐろ","鮪","ツナ","刺身","えび","海老","エビ","いか","イカ","烏賊","たこ","タコ","蛸","あさり","しじみ","はまぐり","ほたて","帆立","牡蠣","かき","うなぎ","鰻","あなご","穴子","しらす","ちりめん","明太","たらこ","いくら","かに","蟹","うに","雲丹","貝柱","ホタルイカ","ししゃも","かじき","カジキ","ちくわ","かまぼこ","はんぺん","さつま揚げ","つみれ","魚肉"];
+const FISH_BLOCK=["かいわれ","貝割れ","すいか","西瓜","かきたま","かき玉","たこ焼き","えびいも","たらの芽"];
+const DAIRY=["牛乳","豆乳","生クリーム","ヨーグルト","チーズ"];
+function zenToHan(s){return s.replace(/[０-９．／]/g,c=>String.fromCharCode(c.charCodeAt(0)-0xFEE0));}
+// splitQty は数量が数字で始まる場合しか分離しないため、「適量」「各大さじ1」「（または水）400ml」等の
+// 補足・分量表記が名前に残る。括弧内を除き、末尾の分量表記を取り除いて食材名だけにする。
+function normName(n){
+  let s=n.replace(/[（(][^）)]*[）)]/g,"");
+  s=s.replace(/[\s　]*(?:各)?(?:適量|少々|少量|ひとつまみ|一つまみ|ふたつまみ|お好みで?|適宜|適当|たっぷり)$/,"");
+  s=s.replace(/(?:各)?(?:大さじ|小さじ|カップ)[\s　]*[\d\/．.]+.*$/,"");
+  s=s.replace(/[\s　]*\d+(?:[\.．]\d+)?(?:\/\d+)?(?:ml|cc|mL|l|L|g|kg|個|本|枚|切れ|尾|杯|合|パック|袋|束|玉|片|房|株|缶|丁|かけ|滴|摘み)?$/,"");
+  return s.trim();
+}
+function isShopExcluded(name){
+  const base=name.replace(/[（(][^）)]*[）)]/g,"").trim();
+  if(base===""||/^[—\-–~〜・、,\.\s]*$/.test(base))return true;
+  const parts=base.split(/[・、]/).map(x=>x.trim()).filter(Boolean);
+  if(parts.length&&parts.every(p=>SHOP_EXCLUDE.has(p)))return true;
+  return SHOP_EXCLUDE.has(base);
+}
+function shopCat(name){
+  if(DAIRY.some(k=>name.includes(k)))return "other";
+  if(FISH_BLOCK.some(k=>name.includes(k)))return "other";
+  if(FISH_KW.some(k=>name.includes(k)))return "fish";
+  if(MEAT_KW.some(k=>name.includes(k)))return "meat";
+  return "other";
+}
+function parseQtyNum(qty){
+  if(!qty)return null;
+  const q=zenToHan(qty).trim();
+  let m=q.match(/^(\d+)\/(\d+)\s*(.*)$/);
+  if(m)return {num:parseInt(m[1],10)/parseInt(m[2],10),unit:m[3].trim()};
+  m=q.match(/^(\d+(?:\.\d+)?)\s*(.*)$/);
+  if(m)return {num:parseFloat(m[1]),unit:m[2].trim()};
+  return null;
+}
+function fmtNum(n){return Number.isInteger(n)?String(n):String(Math.round(n*100)/100);}
+function combineQtys(list){
+  if(!list.length)return "";
+  const parsed=list.map(parseQtyNum);
+  if(list.length>1&&parsed.every(p=>p&&p.unit===parsed[0].unit)){
+    return fmtNum(parsed.reduce((a,p)=>a+p.num,0))+parsed[0].unit;
+  }
+  return [...new Set(list)].join("・");
+}
+function buildShoppingWeeks(mk){
+  const mnum=parseInt(mk,10);
+  const recipes=recipesByMonth[mk]||[];
+  const buckets=new Map();
+  recipes.forEach(r=>{
+    const date=new Date(2026,mnum-1,r.d);
+    const sun=new Date(date);sun.setDate(date.getDate()-date.getDay());
+    const key=sun.getTime();
+    if(!buckets.has(key))buckets.set(key,{sun,cats:{meat:new Map(),fish:new Map(),other:new Map()}});
+    const b=buckets.get(key);
+    DISH_SLOTS.forEach(slot=>{(r[slot]&&r[slot].ing||[]).forEach(ing=>{
+      const p=splitQty(ing);
+      // 「A・B・C」のように1行に複数食材が書かれている材料は分割し、分量表記を除いて個別に集計する
+      // （括弧内に読点があるため、先に括弧内を除いてから分割する）
+      const stripped=p.name.replace(/[（(][^）)]*[）)]/g,"");
+      const parts=stripped.split(/[・、]/).map(x=>normName(x)).filter(Boolean);
+      const names=parts.length>1?parts:[normName(p.name)];
+      const qty=names.length===1?p.qty.trim():"";
+      names.forEach(name=>{
+        if(!name||isShopExcluded(name))return;
+        const map=b.cats[shopCat(name)];
+        if(!map.has(name))map.set(name,[]);
+        if(qty)map.get(name).push(qty);
+      });
+    });});
+  });
+  const fmt=d=>`${d.getMonth()+1}/${d.getDate()}`;
+  const toArr=map=>[...map.entries()].map(([name,qtys])=>{const q=combineQtys(qtys);return q?name+" "+q:name;});
+  return [...buckets.keys()].sort((a,b)=>a-b).map((k,i)=>{
+    const b=buckets.get(k);const sat=new Date(b.sun);sat.setDate(b.sun.getDate()+6);
+    return {label:`第${i+1}週`,range:`${fmt(b.sun)}〜${fmt(sat)}`,meat:toArr(b.cats.meat),fish:toArr(b.cats.fish),other:toArr(b.cats.other)};
+  });
+}
+let curShopWeeks=[];
+
 function renderMonth(){
   const recipes=recipesByMonth[curMonth];
   const shun=shunByMonth[curMonth];
-  const shopping=shoppingByMonth[curMonth];
+  const shopping=curShopWeeks=buildShoppingWeeks(curMonth);
   $("shunTitle").textContent=`${curMonth}の旬食材`;
   $("kondateTitle").textContent=`${curMonth}の夕食献立`;
   $("shunChips").innerHTML=shun.map(s=>`<span class="chip">${s}</span>`).join("");
@@ -567,7 +652,7 @@ function refreshBadges(){
 function toast(msg){const t=$("toast");t.textContent=msg;t.classList.add("show");setTimeout(()=>t.classList.remove("show"),1800);}
 $("shopPanels").addEventListener("click",e=>{
   const cp=e.target.closest(".copy-btn");
-  if(cp){const w=shoppingByMonth[curMonth][+cp.dataset.copy];const txt=[...w.meat,...w.fish,...w.other].join("\n");
+  if(cp){const w=curShopWeeks[+cp.dataset.copy];const txt=[...w.meat,...w.fish,...w.other].join("\n");
     navigator.clipboard.writeText(txt).then(()=>toast("買い物リストをコピーしました"));return;}
   const li=e.target.closest(".shop-cat li");if(li){li.classList.toggle("done");setCheck(li.dataset.key,li.classList.contains("done"));}
 });
