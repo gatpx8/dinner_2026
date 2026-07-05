@@ -134,14 +134,20 @@
   .cal .cell.empty{background:transparent;border:none}
   .cal-name{text-align:center;font-size:.6rem;color:var(--sumi);line-height:1.2;margin-top:1px;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   @media(max-width:560px){.cal{gap:4px;padding:10px}.cal .cell .ce{font-size:1rem}.cal-name{display:none}}
-  .modal-bg{position:fixed;inset:0;background:rgba(43,37,32,.6);backdrop-filter:blur(3px);display:none;align-items:flex-start;justify-content:center;padding:40px 16px;z-index:100;overflow-y:auto}
+  .modal-bg{position:fixed;inset:0;background:rgba(43,37,32,.6);backdrop-filter:blur(3px);display:none;align-items:center;justify-content:center;z-index:100;
+    padding:16px;
+    padding-top:max(16px,env(safe-area-inset-top));padding-bottom:max(16px,env(safe-area-inset-bottom));
+    padding-left:max(16px,env(safe-area-inset-left));padding-right:max(16px,env(safe-area-inset-right))}
   .modal-bg.open{display:flex}
-  .modal{background:var(--rice);border-radius:22px;max-width:680px;width:100%;box-shadow:0 20px 60px rgba(0,0,0,.3);animation:pop .25s ease;margin:auto}
+  /* モーダル本体：ヘッダー固定＋本文だけ内部スクロール。高さは iOS Safari で破綻しない dvh を使用 */
+  .modal{background:var(--rice);border-radius:22px;max-width:680px;width:100%;box-shadow:0 20px 60px rgba(0,0,0,.3);animation:pop .25s ease;
+    display:flex;flex-direction:column;overflow:hidden;
+    max-height:calc(100vh - 32px);max-height:calc(100dvh - 32px)}
   @keyframes pop{from{transform:translateY(16px);opacity:0}to{transform:translateY(0);opacity:1}}
-  .modal-head{position:sticky;top:0;background:var(--ink);color:var(--rice);padding:20px 26px;border-radius:22px 22px 0 0;display:flex;justify-content:space-between;align-items:center;z-index:2}
+  .modal-head{flex:0 0 auto;background:var(--ink);color:var(--rice);padding:20px 26px;border-radius:22px 22px 0 0;display:flex;justify-content:space-between;align-items:center;z-index:2}
   .modal-head .mdate{font-family:'Shippori Mincho',serif;font-size:1.3rem;font-weight:800}
   .modal-close{background:none;border:none;color:var(--rice);font-size:1.6rem;cursor:pointer;line-height:1;padding:4px 8px}
-  .modal-body{padding:8px 26px 30px}
+  .modal-body{flex:1 1 auto;overflow-y:auto;-webkit-overflow-scrolling:touch;overscroll-behavior:contain;padding:8px 26px 30px}
   .recipe-block{padding:22px 0;border-bottom:1px solid var(--line)}
   .recipe-block:last-child{border-bottom:none}
   .recipe-block .rb-head{display:flex;align-items:center;gap:10px;margin-bottom:12px}
@@ -444,6 +450,17 @@ function catBlock(cls,ico,title,arr,keyPrefix){
 
 // モーダル
 const modalBg=$("modalBg"),modalDate=$("modalDate"),modalBody=$("modalBody");
+// 背景（body）のスクロールロック：現在位置を保持して body を固定し、閉じたら元位置へ戻す
+// （iOS Safari では overflow:hidden だけでは背景が動くため position:fixed を使う）
+let _lockedScrollY=0;
+function openModalUI(){
+  _lockedScrollY=window.scrollY||window.pageYOffset||0;
+  document.body.style.position="fixed";
+  document.body.style.top=`-${_lockedScrollY}px`;
+  document.body.style.left="0";document.body.style.right="0";document.body.style.width="100%";
+  modalBg.classList.add("open");
+  modalBody.scrollTop=0;
+}
 function openModal(idx){
   const r=recipesByMonth[curMonth][idx];
   modalDate.textContent=`${curMonth}${r.d}日（${r.w}）の献立`;
@@ -457,7 +474,7 @@ function openModal(idx){
       ${o.tip?`<div class="tip"><b>💡 コツ</b>：${o.tip}</div>`:""}
     </div>`;
   modalBody.innerHTML=actionBar(curMonth,r.d)+noteSection(curMonth,r.d)+block("r-main","主菜",r.main)+block("r-side","副菜",r.side)+block("r-soup","汁物",r.soup);
-  modalBg.classList.add("open");document.body.style.overflow="hidden";
+  openModalUI();
 }
 function openStock(idx){
   const s=stockByMonth[curMonth][idx];
@@ -471,9 +488,14 @@ function openStock(idx){
       </div>
       ${s.tip?`<div class="tip"><b>💡 コツ</b>：${s.tip}</div>`:""}
     </div>`;
-  modalBg.classList.add("open");document.body.style.overflow="hidden";
+  openModalUI();
 }
-function closeModal(){modalBg.classList.remove("open");document.body.style.overflow=""}
+function closeModal(){
+  modalBg.classList.remove("open");
+  document.body.style.position="";document.body.style.top="";
+  document.body.style.left="";document.body.style.right="";document.body.style.width="";
+  window.scrollTo(0,_lockedScrollY);
+}
 
 // イベント委譲
 $("calendar").addEventListener("click",e=>{const c=e.target.closest(".day");if(c)openModal(+c.dataset.idx);});
@@ -571,7 +593,7 @@ function openArchiveModal(mk,d){
     modalDate.textContent=`${mk}${d}日`;
     modalBody.innerHTML=actionBar(mk,d)+noteSection(mk,d)+`<div class="recipe-block r-main" style="border-bottom:none"><div class="rb-head"><h3 style="font-size:1.3rem">${menuItem?menuItem.emoji+" "+menuItem.name:"この日の献立"}</h3></div><p style="padding:16px 0;color:var(--sumi)">この月のレシピ詳細は準備中です。</p></div>`;
   }
-  modalBg.classList.add("open");document.body.style.overflow="hidden";
+  openModalUI();
 }
 $("calArea").addEventListener("click",e=>{
   const c=e.target.closest(".cell.has");
