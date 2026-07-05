@@ -175,9 +175,14 @@
   .ract:hover{border-color:var(--sumi)}
   .ract.made.on{background:var(--matcha);color:#fff;border-color:var(--matcha)}
   .ract.fav.on{background:var(--kuchiba);color:#fff;border-color:var(--kuchiba)}
+  /* 品目ごとの「作った」小ボタン（料理見出しの右） */
+  .ract.mini{margin-left:auto;padding:5px 14px;font-size:.78rem;white-space:nowrap;flex:0 0 auto}
+  .rb-head{flex-wrap:wrap}
+  .ract-hint{font-size:.76rem;color:var(--sumi);align-self:center;opacity:.85}
   /* カードのバッジ */
   .bdg{font-size:.64rem;font-weight:700;padding:2px 8px;border-radius:999px;display:none;line-height:1.4}
   .day.is-made .bdg-made{display:inline-block;background:var(--matcha);color:#fff}
+  .day.is-made-all .bdg-made{background:var(--hassyoku)}
   .day.is-fav .bdg-fav{display:inline-block;background:var(--kuchiba);color:#fff}
   /* 検索ビュー */
   .search-input{width:100%;max-width:560px;display:block;margin:0 auto 16px;font-family:'Zen Maru Gothic',sans-serif;font-size:1rem;padding:13px 22px;border-radius:999px;border:1.5px solid var(--line);background:#fffdf8;color:var(--ink)}
@@ -336,6 +341,22 @@ const MADE_KEY="dinner_2026_made",FAV_KEY="dinner_2026_fav";
 function getMap(k){try{return JSON.parse(localStorage.getItem(k))||{}}catch(e){return {};}}
 function setFlag(k,id,on){const m=getMap(k);if(on)m[id]=1;else delete m[id];try{localStorage.setItem(k,JSON.stringify(m));}catch(e){}}
 function rid(month,day){return month+"-"+day;}
+// 「作った」は品目単位（主菜/副菜/汁物）で保存する。キー = 月-日-slot
+const DISH_SLOTS=["main","side","soup"];
+function madeId(month,day,slot){return rid(month,day)+"-"+slot;}
+function madeCount(map,month,day){return DISH_SLOTS.filter(s=>map[madeId(month,day,s)]).length;}
+// 旧形式（日単位のキー "月-日"）を品目単位へ移行：その日の3品すべてを作った扱いにする。
+// 形式に合わないもの・壊れたデータは無視される（初期化されるだけで実害なし）。
+(function migrateMade(){
+  const m=getMap(MADE_KEY);let changed=false;
+  Object.keys(m).forEach(k=>{
+    if(/^.+月-\d+$/.test(k)){ // slot 区分が付いていない旧キー
+      DISH_SLOTS.forEach(s=>{m[k+"-"+s]=1;});
+      delete m[k];changed=true;
+    }
+  });
+  if(changed){try{localStorage.setItem(MADE_KEY,JSON.stringify(m));}catch(e){}}
+})();
 // メモの保存
 const NOTE_KEY="dinner_2026_notes";
 function getNote(id){return getMap(NOTE_KEY)[id]||"";}
@@ -351,11 +372,16 @@ function noteSection(month,day){
 }
 function actionBar(month,day){
   const id=rid(month,day);
-  const made=getMap(MADE_KEY)[id]?1:0, fav=getMap(FAV_KEY)[id]?1:0;
+  const fav=getMap(FAV_KEY)[id]?1:0;
   return `<div class="recipe-actions">
-    <button class="ract made${made?' on':''}" data-act="made" data-id="${id}">${made?'✓ 作った':'作ったらタップ'}</button>
     <button class="ract fav${fav?' on':''}" data-act="fav" data-id="${id}">${fav?'★ お気に入り':'☆ お気に入り'}</button>
+    <span class="ract-hint">「作った」は主菜・副菜・汁物それぞれで記録できます↓</span>
   </div>`;
+}
+// 各料理ブロックのヘッダーに表示する、品目ごとの「作った」トグルボタン
+function madeBtn(month,day,slot){
+  const on=getMap(MADE_KEY)[madeId(month,day,slot)]?1:0;
+  return `<button class="ract made mini${on?' on':''}" data-act="made" data-id="${madeId(month,day,slot)}">${on?'✓ 作った':'作った？'}</button>`;
 }
 
 // ビュータブ
@@ -418,9 +444,9 @@ function renderMonth(){
     const tg=tagInfo(r.type);
     const dish=(cls,role,o)=>`<div class="dish ${cls}"><div class="role">${role}</div><div class="name">${o.title}${o.sub?`<small>${o.sub}</small>`:""}</div></div>`;
     const isToday=curMonth===todayMonthLabel&&r.d===todayDay;
-    const id=rid(curMonth,r.d);const made=madeMap[id]?' is-made':'';const fav=favMap[id]?' is-fav':'';const note=(noteMap[id]&&noteMap[id].trim())?' is-note':'';
+    const id=rid(curMonth,r.d);const mc=madeCount(madeMap,curMonth,r.d);const made=mc>0?(mc===3?' is-made is-made-all':' is-made'):'';const fav=favMap[id]?' is-fav':'';const note=(noteMap[id]&&noteMap[id].trim())?' is-note':'';
     return `<article class="day${isToday?' today':''}${made}${fav}${note}" tabindex="0" role="button" data-idx="${i}" data-id="${id}" aria-label="${r.d}日の献立を開く${isToday?'（今日）':''}">
-      <div class="day-top"><div class="day-date"><span class="d">${r.d}</span><span class="w ${wkClass(r.w)}">${r.w}</span>${isToday?'<span class="today-chip">今日</span>':''}<span class="bdg bdg-fav">★</span><span class="bdg bdg-made">✓作った</span><span class="bdg bdg-note">📝</span></div><span class="day-tag ${tg.cls}">${tg.txt}</span></div>
+      <div class="day-top"><div class="day-date"><span class="d">${r.d}</span><span class="w ${wkClass(r.w)}">${r.w}</span>${isToday?'<span class="today-chip">今日</span>':''}<span class="bdg bdg-fav">★</span><span class="bdg bdg-made">${madeBadgeText(mc)}</span><span class="bdg bdg-note">📝</span></div><span class="day-tag ${tg.cls}">${tg.txt}</span></div>
       <div class="dishes">${dish("main","主菜",r.main)}${dish("side","副菜",r.side)}${dish("soup","汁物",r.soup)}</div>
       <div class="tap-hint">タップで作り方 →</div>
     </article>`;
@@ -466,7 +492,7 @@ function openModal(idx){
   modalDate.textContent=`${curMonth}${r.d}日（${r.w}）の献立`;
   const block=(cls,role,o)=>`
     <div class="recipe-block ${cls}">
-      <div class="rb-head"><span class="rb-role">${role}</span><h3>${o.title}</h3></div>
+      <div class="rb-head"><span class="rb-role">${role}</span><h3>${o.title}</h3>${madeBtn(curMonth,r.d,cls.replace("r-",""))}</div>
       <div class="recipe-cols">
         <div><div class="col-label">材料（2人分）</div><ul class="ing">${o.ing.map(x=>`<li>${x}</li>`).join("")}</ul></div>
         <div><div class="col-label">作り方</div><ol class="steps">${o.steps.map(x=>`<li>${x}</li>`).join("")}</ol></div>
@@ -511,7 +537,7 @@ modalBody.addEventListener("click",e=>{
   const id=b.dataset.id;const on=!getMap(key)[id];
   setFlag(key,id,on);
   b.classList.toggle("on",on);
-  if(b.dataset.act==="made")b.textContent=on?"✓ 作った":"作ったらタップ";
+  if(b.dataset.act==="made")b.textContent=on?"✓ 作った":"作った？";
   else b.textContent=on?"★ お気に入り":"☆ お気に入り";
   if(on)toast(b.dataset.act==="made"?"「作った」に記録しました":"お気に入りに登録しました");
   refreshBadges();
@@ -523,12 +549,16 @@ modalBody.addEventListener("input",e=>{
   setNote(t.dataset.id,t.value);
   refreshBadges();
 });
-// 月カードのバッジを再描画（再生成せず状態のみ更新）
+// 月カードのバッジを再描画（再生成せず状態のみ更新）。作った状態は品目単位の件数で判定。
+function madeBadgeText(cnt){return cnt===3?"✓ 全部作った":cnt>0?"✓ "+cnt+"品作った":"✓作った";}
 function refreshBadges(){
   const made=getMap(MADE_KEY),fav=getMap(FAV_KEY),notes=getMap(NOTE_KEY);
   $("calendar").querySelectorAll(".day").forEach(card=>{
     const id=card.dataset.id;
-    card.classList.toggle("is-made",!!made[id]);
+    const cnt=DISH_SLOTS.filter(s=>made[id+"-"+s]).length;
+    card.classList.toggle("is-made",cnt>0);
+    card.classList.toggle("is-made-all",cnt===3);
+    const bdg=card.querySelector(".bdg-made");if(bdg)bdg.textContent=madeBadgeText(cnt);
     card.classList.toggle("is-fav",!!fav[id]);
     card.classList.toggle("is-note",!!(notes[id]&&notes[id].trim()));
   });
@@ -581,7 +611,7 @@ function openArchiveModal(mk,d){
     modalDate.textContent=`${mk}${d}日（${r.w}）の献立`;
     const block=(cls,role,o)=>`
       <div class="recipe-block ${cls}">
-        <div class="rb-head"><span class="rb-role">${role}</span><h3>${o.title}</h3></div>
+        <div class="rb-head"><span class="rb-role">${role}</span><h3>${o.title}</h3>${madeBtn(mk,d,cls.replace("r-",""))}</div>
         <div class="recipe-cols">
           <div><div class="col-label">材料（2人分）</div><ul class="ing">${o.ing.map(x=>`<li>${x}</li>`).join("")}</ul></div>
           <div><div class="col-label">作り方</div><ol class="steps">${o.steps.map(x=>`<li>${x}</li>`).join("")}</ol></div>
@@ -630,7 +660,7 @@ function renderSearch(){
   const hasNote=id=>notes[id]&&notes[id].trim();
   let items=RECIPE_INDEX;
   if(searchFilter==="fav")items=items.filter(it=>fav[rid(it.month,it.day)]);
-  else if(searchFilter==="made")items=items.filter(it=>made[rid(it.month,it.day)]);
+  else if(searchFilter==="made")items=items.filter(it=>madeCount(made,it.month,it.day)>0);
   else if(searchFilter==="note")items=items.filter(it=>hasNote(rid(it.month,it.day)));
   if(q)items=items.filter(it=>it.text.toLowerCase().includes(q)||(notes[rid(it.month,it.day)]||"").toLowerCase().includes(q));
   const cnt=$("searchCount");
@@ -644,7 +674,7 @@ function renderSearch(){
     const id=rid(it.month,it.day);
     return `<button class="sresult" data-month="${it.month}" data-day="${it.day}">
       <div class="sr-date">${it.month}${it.day}日</div>
-      <div class="sr-dish">${it.main}${fav[id]?' <span class="sr-fav">★</span>':''}${made[id]?' <span class="sr-made">✓</span>':''}${hasNote(id)?' <span class="sr-note">📝</span>':''}</div>
+      <div class="sr-dish">${it.main}${fav[id]?' <span class="sr-fav">★</span>':''}${madeCount(made,it.month,it.day)>0?' <span class="sr-made">✓'+(madeCount(made,it.month,it.day)===3?'':madeCount(made,it.month,it.day))+'</span>':''}${hasNote(id)?' <span class="sr-note">📝</span>':''}</div>
       <div class="sr-sub">${it.dishes}</div>
       ${hasNote(id)?`<div class="sr-sub sr-note">📝 ${esc(notes[id])}</div>`:""}
     </button>`;
