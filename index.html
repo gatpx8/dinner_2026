@@ -447,6 +447,7 @@ function normName(n){
   s=s.replace(/[\s　]*(?:各)?(?:適量|少々|少量|ひとつまみ|一つまみ|ふたつまみ|お好みで?|適宜|適当|たっぷり)$/,"");
   s=s.replace(/(?:各)?(?:大さじ|小さじ|カップ)[\s　]*[\d\/．.]+.*$/,"");
   s=s.replace(/[\s　]*\d+(?:[\.．]\d+)?(?:\/\d+)?(?:ml|cc|mL|l|L|g|kg|個|本|枚|切れ|尾|杯|合|パック|袋|束|玉|片|房|株|缶|丁|かけ|滴|摘み)?$/,"");
+  s=s.replace(/[\s　]*[各約]$/,""); // 「にんにく 各1かけ」等で数量を剥がした後に残る「各/約」を除去
   return s.trim();
 }
 function isShopExcluded(name){
@@ -481,36 +482,51 @@ function combineQtys(list){
   }
   return [...new Set(list)].join("・");
 }
+// 1つのレシピの全材料を、カテゴリ別Map(名前→分量配列)へ集計する
+function collectInto(cats,r){
+  DISH_SLOTS.forEach(slot=>{(r[slot]&&r[slot].ing||[]).forEach(ing=>{
+    const p=splitQty(ing);
+    // 「A・B・C」のように1行に複数食材が書かれている材料は分割し、分量表記を除いて個別に集計する
+    // （括弧内に読点があるため、先に括弧内を除いてから分割する）
+    const stripped=p.name.replace(/[（(][^）)]*[）)]/g,"");
+    const parts=stripped.split(/[・、]/).map(x=>normName(x)).filter(Boolean);
+    const names=parts.length>1?parts:[normName(p.name)];
+    const qty=names.length===1?p.qty.trim():"";
+    names.forEach(name=>{
+      if(!name||isShopExcluded(name))return;
+      const map=cats[shopCat(name)];
+      if(!map.has(name))map.set(name,[]);
+      if(qty)map.get(name).push(qty);
+    });
+  });});
+}
+// 年間を通した日曜〜土曜の週を1度だけ構築する（月をまたいで7日分を集計）。
+// 各週は「木曜がある月」に属させ、月タブに重複なく割り当てる（年またぎもこれで自然に収まる）。
+let ALL_WEEKS=null;
+function buildAllWeeks(){
+  if(ALL_WEEKS)return ALL_WEEKS;
+  const weeks=new Map();
+  Object.keys(recipesByMonth).forEach(mk=>{
+    const mnum=parseInt(mk,10);if(!mnum)return;
+    recipesByMonth[mk].forEach(r=>{
+      const date=new Date(2026,mnum-1,r.d);
+      const sun=new Date(date);sun.setDate(date.getDate()-date.getDay());
+      const key=sun.getTime();
+      if(!weeks.has(key)){
+        const thu=new Date(sun);thu.setDate(sun.getDate()+4);
+        weeks.set(key,{sun,thuMonth:thu.getMonth()+1,cats:{meat:new Map(),fish:new Map(),other:new Map()}});
+      }
+      collectInto(weeks.get(key).cats,r);
+    });
+  });
+  ALL_WEEKS=weeks;return weeks;
+}
 function buildShoppingWeeks(mk){
   const mnum=parseInt(mk,10);
-  const recipes=recipesByMonth[mk]||[];
-  const buckets=new Map();
-  recipes.forEach(r=>{
-    const date=new Date(2026,mnum-1,r.d);
-    const sun=new Date(date);sun.setDate(date.getDate()-date.getDay());
-    const key=sun.getTime();
-    if(!buckets.has(key))buckets.set(key,{sun,cats:{meat:new Map(),fish:new Map(),other:new Map()}});
-    const b=buckets.get(key);
-    DISH_SLOTS.forEach(slot=>{(r[slot]&&r[slot].ing||[]).forEach(ing=>{
-      const p=splitQty(ing);
-      // 「A・B・C」のように1行に複数食材が書かれている材料は分割し、分量表記を除いて個別に集計する
-      // （括弧内に読点があるため、先に括弧内を除いてから分割する）
-      const stripped=p.name.replace(/[（(][^）)]*[）)]/g,"");
-      const parts=stripped.split(/[・、]/).map(x=>normName(x)).filter(Boolean);
-      const names=parts.length>1?parts:[normName(p.name)];
-      const qty=names.length===1?p.qty.trim():"";
-      names.forEach(name=>{
-        if(!name||isShopExcluded(name))return;
-        const map=b.cats[shopCat(name)];
-        if(!map.has(name))map.set(name,[]);
-        if(qty)map.get(name).push(qty);
-      });
-    });});
-  });
   const fmt=d=>`${d.getMonth()+1}/${d.getDate()}`;
   const toArr=map=>[...map.entries()].map(([name,qtys])=>{const q=combineQtys(qtys);return q?name+" "+q:name;});
-  return [...buckets.keys()].sort((a,b)=>a-b).map((k,i)=>{
-    const b=buckets.get(k);const sat=new Date(b.sun);sat.setDate(b.sun.getDate()+6);
+  return [...buildAllWeeks().values()].filter(w=>w.thuMonth===mnum).sort((a,b)=>a.sun-b.sun).map((b,i)=>{
+    const sat=new Date(b.sun);sat.setDate(b.sun.getDate()+6);
     return {label:`第${i+1}週`,range:`${fmt(b.sun)}〜${fmt(sat)}`,meat:toArr(b.cats.meat),fish:toArr(b.cats.fish),other:toArr(b.cats.other)};
   });
 }
