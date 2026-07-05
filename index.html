@@ -313,6 +313,14 @@ const wkClass=w=>w==="土"?"sat":w==="日"?"sun":"";
 const tagInfo=t=>t==="fish"?{cls:"fish",txt:"魚の日"}:t==="veg"?{cls:"veg",txt:"野菜の日"}:{cls:"",txt:"肉の日"};
 let curMonth=MONTHS[0];
 const _td=new Date();const todayMonthLabel=(_td.getMonth()+1)+"月";const todayDay=_td.getDate();
+// 曜日の正規化：保存された w を信用せず、実日付(2026年)から曜日を再計算して暦と必ず一致させる
+// （データ上、7〜9月の w が1日ぶんズレていたため。以後 w が誤っても表示は常に正しくなる）
+const WDAY=["日","月","火","水","木","金","土"];
+Object.keys(recipesByMonth).forEach(mk=>{
+  const mnum=parseInt(mk,10);
+  if(!mnum)return;
+  recipesByMonth[mk].forEach(r=>{ r.w=WDAY[new Date(2026,mnum-1,r.d).getDay()]; });
+});
 // 買い物チェックの保存
 const CHECK_KEY="dinner_2026_checks";
 function getChecks(){try{return JSON.parse(localStorage.getItem(CHECK_KEY))||{}}catch(e){return {};}}
